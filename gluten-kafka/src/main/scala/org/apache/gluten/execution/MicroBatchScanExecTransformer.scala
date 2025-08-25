@@ -67,8 +67,6 @@ case class MicroBatchScanExecTransformer(
 
   override def getMetadataColumns(): Seq[AttributeReference] = Seq.empty
 
-  override def outputAttributes(): Seq[Attribute] = output
-
   override def getPartitions: Seq[InputPartition] = inputPartitionsShim
 
   /** Returns the actual schema of this data source scan. */
