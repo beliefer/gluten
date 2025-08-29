@@ -47,40 +47,43 @@ object ExecUtil {
       Runtimes.contextInstance(BackendsApiManager.getBackendName, "ExecUtil#ColumnarToRow")
     val jniWrapper = NativeColumnarToRowJniWrapper.create(runtime)
     var info: NativeColumnarToRowInfo = null
-    val batchType = ColumnarBatches.identifyBatchType(batch)
-    val batchHandle =
-      ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, batch, batchType)
     val c2rHandle = jniWrapper.nativeColumnarToRowInit()
-    info = jniWrapper.nativeColumnarToRowConvert(c2rHandle, batchHandle, 0)
+    val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+    try {
+      val batchHandle =
+        ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper)
+      info = jniWrapper.nativeColumnarToRowConvert(c2rHandle, batchHandle, 0)
+      Iterators
+        .wrap(new Iterator[InternalRow] {
+          var rowId = 0
+          var baseLength = 0
+          val row = new UnsafeRow(batch.numCols())
 
-    Iterators
-      .wrap(new Iterator[InternalRow] {
-        var rowId = 0
-        var baseLength = 0
-        val row = new UnsafeRow(batch.numCols())
-
-        override def hasNext: Boolean = {
-          rowId < batch.numRows()
-        }
-
-        override def next: UnsafeRow = {
-          if (rowId >= batch.numRows()) throw new NoSuchElementException
-          if (rowId == baseLength + info.lengths.length) {
-            baseLength += info.lengths.length
-            info = jniWrapper.nativeColumnarToRowConvert(c2rHandle, batchHandle, rowId)
+          override def hasNext: Boolean = {
+            rowId < batch.numRows()
           }
-          val (offset, length) =
-            (info.offsets(rowId - baseLength), info.lengths(rowId - baseLength))
-          row.pointTo(null, info.memoryAddress + offset, length.toInt)
-          rowId += 1
-          row
+
+          override def next: UnsafeRow = {
+            if (rowId >= batch.numRows()) throw new NoSuchElementException
+            if (rowId == baseLength + info.lengths.length) {
+              baseLength += info.lengths.length
+              info = jniWrapper.nativeColumnarToRowConvert(c2rHandle, batchHandle, rowId)
+            }
+            val (offset, length) =
+              (info.offsets(rowId - baseLength), info.lengths(rowId - baseLength))
+            row.pointTo(null, info.memoryAddress + offset, length.toInt)
+            rowId += 1
+            row
+          }
+        })
+        .protectInvocationFlow()
+        .recycleIterator {
+          jniWrapper.nativeClose(c2rHandle)
         }
-      })
-      .protectInvocationFlow()
-      .recycleIterator {
-        jniWrapper.nativeClose(c2rHandle)
-      }
-      .create()
+        .create()
+    } finally {
+      ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+    }
   }
 
   // scalastyle:off argcount
@@ -152,18 +155,23 @@ object ExecUtil {
                     pidVec.putInt(i, pid)
                 }
                 val targetBatch = new ColumnarBatch(Array[ColumnVector](pidVec), cb.numRows)
-                val batchType = ColumnarBatches.identifyBatchType(targetBatch)
-                val pidBatch = VeloxColumnarBatches.toVeloxBatch(
-                  ColumnarBatches.offload(
-                    ArrowBufferAllocators.contextInstance(),
-                    targetBatch,
-                    batchType
-                  ),
-                  ColumnarBatches.identifyBatchType(targetBatch))
-                val newBatch = VeloxColumnarBatches.compose(pidBatch, cb)
-                // Composed batch already hold pidBatch's shared ref, so close is safe.
-                ColumnarBatches.forceClose(pidBatch)
-                (0, newBatch)
+                val targetWrapper = ColumnarBatches.wrapColumnarBatch(targetBatch)
+                try {
+                  val offloadedBatch =
+                    ColumnarBatches.offload(ArrowBufferAllocators.contextInstance(), targetWrapper)
+                  val offloadedWrapper = ColumnarBatches.wrapColumnarBatch(offloadedBatch)
+                  try {
+                    val pidBatch = VeloxColumnarBatches.toVeloxBatch(offloadedWrapper)
+                    val newBatch = VeloxColumnarBatches.compose(pidBatch, cb)
+                    // Composed batch already hold pidBatch's shared ref, so close is safe.
+                    ColumnarBatches.forceClose(pidBatch)
+                    (0, newBatch)
+                  } finally {
+                    ColumnarBatches.ColumnarBatchWrapper.release(offloadedWrapper)
+                  }
+                } finally {
+                  ColumnarBatches.ColumnarBatchWrapper.release(targetWrapper)
+                }
             })
         .recyclePayload(p => ColumnarBatches.forceClose(p._2)) // FIXME why force close?
         .create()

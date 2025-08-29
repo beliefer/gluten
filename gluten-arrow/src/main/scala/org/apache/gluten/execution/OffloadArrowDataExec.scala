@@ -28,11 +28,13 @@ case class OffloadArrowDataExec(override val child: SparkPlan)
   extends ColumnarToColumnarExec(ArrowJavaBatchType, ArrowNativeBatchType) {
   override protected def mapIterator(in: Iterator[ColumnarBatch]): Iterator[ColumnarBatch] = {
     in.map {
-      b =>
-        ColumnarBatches.offload(
-          ArrowBufferAllocators.contextInstance,
-          b,
-          ColumnarBatches.identifyBatchType(b))
+      batch =>
+        val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+        try {
+          ColumnarBatches.load(ArrowBufferAllocators.contextInstance, wrapper)
+        } finally {
+          ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+        }
     }
   }
 

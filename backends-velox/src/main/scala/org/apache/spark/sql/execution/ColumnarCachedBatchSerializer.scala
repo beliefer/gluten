@@ -163,26 +163,31 @@ class ColumnarCachedBatchSerializer extends CachedBatchSerializer with Logging {
           /* Native code needs a Velox offloaded batch, making sure to offload
              if heavy batch is encountered */
           batch =>
-            val batchType = ColumnarBatches.identifyBatchType(batch)
-            VeloxColumnarBatches.ensureVeloxBatch(batch, batchType)
+            val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+            try {
+              VeloxColumnarBatches.ensureVeloxBatch(wrapper)
+            } finally {
+              ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+            }
         }
         new Iterator[CachedBatch] {
           override def hasNext: Boolean = veloxBatches.hasNext
 
           override def next(): CachedBatch = {
             val batch = veloxBatches.next()
-            val results =
-              ColumnarBatchSerializerJniWrapper
-                .create(
-                  Runtimes.contextInstance(
-                    BackendsApiManager.getBackendName,
-                    "ColumnarCachedBatchSerializer#serialize"))
-                .serialize(
-                  ColumnarBatches.getNativeHandle(
-                    BackendsApiManager.getBackendName,
-                    batch,
-                    ColumnarBatches.identifyBatchType(batch)))
-            CachedColumnarBatch(batch.numRows(), results.length, results)
+            val jniWrapper = ColumnarBatchSerializerJniWrapper
+              .create(
+                Runtimes.contextInstance(
+                  BackendsApiManager.getBackendName,
+                  "ColumnarCachedBatchSerializer#serialize"))
+            val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+            try {
+              val results = jniWrapper.serialize(
+                ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper))
+              CachedColumnarBatch(batch.numRows(), results.length, results)
+            } finally {
+              ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+            }
           }
         }
     }
@@ -227,11 +232,10 @@ class ColumnarCachedBatchSerializer extends CachedBatchSerializer with Logging {
               val batch = ColumnarBatches.create(batchHandle)
               if (shouldSelectAttributes) {
                 try {
-                  val batchType = ColumnarBatches.identifyBatchType(batch)
+                  val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
                   ColumnarBatches.select(
                     BackendsApiManager.getBackendName,
-                    batch,
-                    batchType,
+                    wrapper,
                     requestedColumnIndices.toArray)
                 } finally {
                   batch.close()

@@ -172,31 +172,32 @@ case class ColumnarPartialProjectExec(projectList: Seq[NamedExpression], child: 
               Iterator.empty
             } else {
               val start = System.currentTimeMillis()
-              val batchType = ColumnarBatches.identifyBatchType(batch)
-              val childData = ColumnarBatches
-                .select(
-                  BackendsApiManager.getBackendName,
-                  batch,
-                  batchType,
-                  projectIndexInChild.toArray)
+              val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
               try {
-                val projectedBatch = getProjectedBatchArrow(childData, batchType, c2a, a2c)
-                val batchIterator = projectedBatch.map {
-                  b =>
-                    if (b.numCols() != 0) {
-                      val compositeBatch = VeloxColumnarBatches.compose(batch, b)
-                      b.close()
-                      compositeBatch
-                    } else {
-                      b.close()
-                      ColumnarBatches.retain(batch, batchType)
-                      batch
-                    }
+                val childData = ColumnarBatches
+                  .select(BackendsApiManager.getBackendName, wrapper, projectIndexInChild.toArray)
+                val childDataWrapper = ColumnarBatches.wrapColumnarBatch(childData)
+                try {
+                  val projectedBatch = getProjectedBatchArrow(childDataWrapper, c2a, a2c)
+                  val batchIterator = projectedBatch.map {
+                    b =>
+                      if (b.numCols() != 0) {
+                        val compositeBatch = VeloxColumnarBatches.compose(batch, b)
+                        b.close()
+                        compositeBatch
+                      } else {
+                        b.close()
+                        ColumnarBatches.retain(wrapper)
+                        batch
+                      }
+                  }
+                  totalTime += System.currentTimeMillis() - start
+                  batchIterator
+                } finally {
+                  childData.close()
                 }
-                totalTime += System.currentTimeMillis() - start
-                batchIterator
               } finally {
-                childData.close()
+                ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
               }
             }
           }
@@ -212,18 +213,17 @@ case class ColumnarPartialProjectExec(projectList: Seq[NamedExpression], child: 
   }
 
   private def getProjectedBatchArrow(
-      childData: ColumnarBatch,
-      batchType: ColumnarBatches.BatchType,
+      wrapper: ColumnarBatches.ColumnarBatchWrapper,
       c2a: SQLMetric,
       a2c: SQLMetric): Iterator[ColumnarBatch] = {
     // select part of child output and child data
     val proj = ArrowProjection.create(replacedAlias, projectAttributes.toSeq)
-    val numRows = childData.numRows()
+    val numRows = wrapper.getBatch.numRows()
     val start = System.currentTimeMillis()
-    val arrowBatch = if (childData.numCols() == 0) {
-      childData
+    val arrowBatch = if (wrapper.getBatch.numCols() == 0) {
+      wrapper.getBatch
     } else {
-      ColumnarBatches.load(ArrowBufferAllocators.contextInstance(), childData, batchType)
+      ColumnarBatches.load(ArrowBufferAllocators.contextInstance(), wrapper)
     }
     c2a += System.currentTimeMillis() - start
 
@@ -244,20 +244,30 @@ case class ColumnarPartialProjectExec(projectList: Seq[NamedExpression], child: 
     targetRow.finishWriteRow()
     val targetBatch = new ColumnarBatch(vectors.map(_.asInstanceOf[ColumnVector]), numRows)
     val start2 = System.currentTimeMillis()
-    val targetBatchType = ColumnarBatches.identifyBatchType(targetBatch)
-    val offloaded =
-      ColumnarBatches.offload(ArrowBufferAllocators.contextInstance(), targetBatch, targetBatchType)
-    val veloxBatch =
-      VeloxColumnarBatches.toVeloxBatch(offloaded, ColumnarBatches.identifyBatchType(offloaded))
-    a2c += System.currentTimeMillis() - start2
-    Iterators
-      .wrap(Iterator.single(veloxBatch))
-      .recycleIterator({
-        arrowBatch.close()
-        targetBatch.close()
-      })
-      .create()
-    // TODO: should check the size <= 1, but now it has bug, will change iterator to empty
+    val targetWrapper = ColumnarBatches.wrapColumnarBatch(targetBatch)
+    try {
+      val offloaded =
+        ColumnarBatches.offload(ArrowBufferAllocators.contextInstance(), targetWrapper)
+      val offloadedWrapper = ColumnarBatches.wrapColumnarBatch(offloaded)
+      try {
+        val veloxBatch =
+          VeloxColumnarBatches.toVeloxBatch(offloadedWrapper)
+        a2c += System.currentTimeMillis() - start2
+        Iterators
+          .wrap(Iterator.single(veloxBatch))
+          .recycleIterator({
+            arrowBatch.close()
+            targetBatch.close()
+          })
+          .create()
+        // TODO: should check the size <= 1, but now it has bug, will change iterator to empty
+      } finally {
+        ColumnarBatches.ColumnarBatchWrapper.release(offloadedWrapper)
+      }
+    } finally {
+      ColumnarBatches.ColumnarBatchWrapper.release(targetWrapper)
+    }
+
   }
 
   override def verboseStringWithOperatorId(): String = {

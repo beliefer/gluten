@@ -149,41 +149,45 @@ object VeloxColumnarToRowExec {
           return rows
         }
 
-        val batchType = ColumnarBatches.identifyBatchType(batch)
-        VeloxColumnarBatches.checkVeloxBatch(batch, batchType)
+        val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+        try {
+          VeloxColumnarBatches.checkVeloxBatch(wrapper)
 
-        val cols = batch.numCols()
-        val rows = batch.numRows()
-        val batchHandle =
-          ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, batch, batchType)
-        var info: NativeColumnarToRowInfo = null
+          val cols = batch.numCols()
+          val rows = batch.numRows()
+          val batchHandle =
+            ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper)
+          var info: NativeColumnarToRowInfo = null
 
-        new Iterator[InternalRow] {
-          var rowId = 0
-          var baseLength = 0
-          val row = new UnsafeRow(cols)
+          new Iterator[InternalRow] {
+            var rowId = 0
+            var baseLength = 0
+            val row = new UnsafeRow(cols)
 
-          override def hasNext: Boolean = {
-            rowId < rows
-          }
-
-          override def next: UnsafeRow = {
-            if (rowId == 0 || rowId == baseLength + info.lengths.length) {
-              baseLength = if (info == null) {
-                baseLength
-              } else {
-                baseLength + info.lengths.length
-              }
-              val before = System.currentTimeMillis()
-              info = jniWrapper.nativeColumnarToRowConvert(c2rId, batchHandle, rowId)
-              convertTime += (System.currentTimeMillis() - before)
+            override def hasNext: Boolean = {
+              rowId < rows
             }
-            val (offset, length) =
-              (info.offsets(rowId - baseLength), info.lengths(rowId - baseLength))
-            row.pointTo(null, info.memoryAddress + offset, length)
-            rowId += 1
-            row
+
+            override def next: UnsafeRow = {
+              if (rowId == 0 || rowId == baseLength + info.lengths.length) {
+                baseLength = if (info == null) {
+                  baseLength
+                } else {
+                  baseLength + info.lengths.length
+                }
+                val before = System.currentTimeMillis()
+                info = jniWrapper.nativeColumnarToRowConvert(c2rId, batchHandle, rowId)
+                convertTime += (System.currentTimeMillis() - before)
+              }
+              val (offset, length) =
+                (info.offsets(rowId - baseLength), info.lengths(rowId - baseLength))
+              row.pointTo(null, info.memoryAddress + offset, length)
+              rowId += 1
+              row
+            }
           }
+        } finally {
+          ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
         }
       }
     }

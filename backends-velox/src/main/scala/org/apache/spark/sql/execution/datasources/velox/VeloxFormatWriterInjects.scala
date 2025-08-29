@@ -77,15 +77,19 @@ trait VeloxFormatWriterInjects extends GlutenFormatWriterInjectsBase {
       override def write(row: InternalRow): Unit = {
         BatchCarrierRow.unwrap(row).foreach {
           batch =>
-            val batchType = ColumnarBatches.identifyBatchType(batch)
-            ColumnarBatches.checkOffloaded(batchType)
-            ColumnarBatches.retain(batch, batchType)
-            val batchHandle = {
-              ColumnarBatches.checkOffloaded(batchType)
-              ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, batch, batchType)
+            val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+            try {
+              ColumnarBatches.checkOffloaded(wrapper.getBatchType)
+              ColumnarBatches.retain(wrapper)
+              val batchHandle = {
+                ColumnarBatches.checkOffloaded(wrapper.getBatchType)
+                ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper)
+              }
+              datasourceJniWrapper.writeBatch(dsHandle, batchHandle)
+              batch.close()
+            } finally {
+              ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
             }
-            datasourceJniWrapper.writeBatch(dsHandle, batchHandle)
-            batch.close()
         }
       }
 
@@ -114,14 +118,18 @@ class VeloxRowSplitter extends GlutenRowSplitter {
       partitionColIndice: Array[Int],
       hasBucket: Boolean,
       reservePartitionColumns: Boolean = false): BlockStripes = {
-    val batchType = ColumnarBatches.identifyBatchType(batch)
-    val handler =
-      ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, batch, batchType)
     val runtime =
       Runtimes.contextInstance(BackendsApiManager.getBackendName, "VeloxRowSplitter")
     val datasourceJniWrapper = VeloxDataSourceJniWrapper.create(runtime)
-    new VeloxBlockStripes(
-      datasourceJniWrapper
-        .splitBlockByPartitionAndBucket(handler, partitionColIndice, hasBucket))
+    val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+    try {
+      val handler =
+        ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper)
+      new VeloxBlockStripes(
+        datasourceJniWrapper
+          .splitBlockByPartitionAndBucket(handler, partitionColIndice, hasBucket))
+    } finally {
+      ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+    }
   }
 }

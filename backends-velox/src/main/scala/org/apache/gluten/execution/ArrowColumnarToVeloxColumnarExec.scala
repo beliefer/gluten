@@ -28,8 +28,8 @@ case class ArrowColumnarToVeloxColumnarExec(override val child: SparkPlan)
   override protected def mapIterator(in: Iterator[ColumnarBatch]): Iterator[ColumnarBatch] = {
     in.map {
       b =>
-        val batchType = ColumnarBatches.identifyBatchType(b)
-        val out = VeloxColumnarBatches.toVeloxBatch(b, batchType)
+        val wrapper = ColumnarBatches.wrapColumnarBatch(b)
+        val out = VeloxColumnarBatches.toVeloxBatch(wrapper)
         out
     }
   }

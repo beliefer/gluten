@@ -200,16 +200,20 @@ class ColumnarShuffleWriter[K, V](
         }
 
         val rows = cb.numRows()
-        val batchType = ColumnarBatches.identifyBatchType(cb)
-        val columnarBatchHandle =
-          ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, cb, batchType)
-        val startTime = System.nanoTime()
-        shuffleWriterJniWrapper.write(
-          nativeShuffleWriter,
-          rows,
-          columnarBatchHandle,
-          availableOffHeapPerTask())
-        dep.metrics("shuffleWallTime").add(System.nanoTime() - startTime)
+        val wrapper = ColumnarBatches.wrapColumnarBatch(cb)
+        try {
+          val columnarBatchHandle =
+            ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper)
+          val startTime = System.nanoTime()
+          shuffleWriterJniWrapper.write(
+            nativeShuffleWriter,
+            rows,
+            columnarBatchHandle,
+            availableOffHeapPerTask())
+          dep.metrics("shuffleWallTime").add(System.nanoTime() - startTime)
+        } finally {
+          ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+        }
         dep.metrics("numInputRows").add(rows)
         dep.metrics("inputBatches").add(1)
         // This metric is important, AQE use it to decide if EliminateLimit

@@ -44,7 +44,12 @@ case class ColumnarCollectTailExec(
     while (partitionIter.hasNext) {
       val batch = partitionIter.next()
       val batchRows = batch.numRows()
-      ColumnarBatches.retain(batch, ColumnarBatches.identifyBatchType(batch))
+      val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+      try {
+        ColumnarBatches.retain(wrapper)
+      } finally {
+        ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+      }
       tailQueue += batch
       totalRowsInTail += batchRows
 
@@ -68,9 +73,13 @@ case class ColumnarCollectTailExec(
     if (overflow > 0) {
       val first = tailQueue.remove(0)
       val keep = first.numRows() - overflow
-      val batchType = ColumnarBatches.identifyBatchType(first)
-      val sliced = VeloxColumnarBatches.slice(first, batchType, overflow.toInt, keep.toInt)
-      tailQueue.prepend(sliced)
+      val wrapper = ColumnarBatches.wrapColumnarBatch(first)
+      try {
+        val sliced = VeloxColumnarBatches.slice(wrapper, overflow.toInt, keep.toInt)
+        tailQueue.prepend(sliced)
+      } finally {
+        ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+      }
       first.close()
     }
 

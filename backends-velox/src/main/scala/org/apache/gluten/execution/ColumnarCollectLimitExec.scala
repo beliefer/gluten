@@ -77,18 +77,22 @@ case class ColumnarCollectLimitExec(
 
             val needed = math.min(rowsToCollect, leftoverAfterSkip)
 
-            val batchType = ColumnarBatches.identifyBatchType(batch)
-            val prunedBatch =
-              if (startIndex == 0 && needed == batchSize) {
-                ColumnarBatches.retain(batch, batchType)
-                batch
-              } else {
-                VeloxColumnarBatches.slice(batch, batchType, startIndex, needed)
-              }
+            val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+            try {
+              val prunedBatch =
+                if (startIndex == 0 && needed == batchSize) {
+                  ColumnarBatches.retain(wrapper)
+                  batch
+                } else {
+                  VeloxColumnarBatches.slice(wrapper, startIndex, needed)
+                }
 
-            rowsToCollect -= needed
-            nextBatch = Some(prunedBatch)
-            return true
+              rowsToCollect -= needed
+              nextBatch = Some(prunedBatch)
+              return true
+            } finally {
+              ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+            }
           }
         }
         false

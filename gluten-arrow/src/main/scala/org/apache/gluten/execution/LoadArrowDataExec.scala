@@ -29,8 +29,12 @@ case class LoadArrowDataExec(override val child: SparkPlan)
   override protected def mapIterator(in: Iterator[ColumnarBatch]): Iterator[ColumnarBatch] = {
     in.map {
       batch =>
-        val batchType = ColumnarBatches.identifyBatchType(batch)
-        ColumnarBatches.load(ArrowBufferAllocators.contextInstance, batch, batchType)
+        val wrapper = ColumnarBatches.wrapColumnarBatch(batch)
+        try {
+          ColumnarBatches.load(ArrowBufferAllocators.contextInstance, wrapper)
+        } finally {
+          ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+        }
     }
   }
 

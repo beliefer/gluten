@@ -165,27 +165,36 @@ object BroadcastUtils {
       .filter(_.numRows() != 0)
       .map(
         b => {
-          ColumnarBatches.retain(b, ColumnarBatches.identifyBatchType(b))
-          b
+          val wrapper = ColumnarBatches.wrapColumnarBatch(b)
+          try {
+            ColumnarBatches.retain(wrapper)
+            b
+          } finally {
+            ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
+          }
         })
     var numRows: Long = 0
     val values = filtered
       .map(
         b => {
-          val batchType = ColumnarBatches.identifyBatchType(b)
-          val handle =
-            ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, b, batchType)
-          numRows += b.numRows()
+          val wrapper = ColumnarBatches.wrapColumnarBatch(b)
           try {
-            ColumnarBatchSerializerJniWrapper
-              .create(
-                Runtimes
-                  .contextInstance(
-                    BackendsApiManager.getBackendName,
-                    "BroadcastUtils#serializeStream"))
-              .serialize(handle)
+            val handle =
+              ColumnarBatches.getNativeHandle(BackendsApiManager.getBackendName, wrapper)
+            numRows += b.numRows()
+            try {
+              ColumnarBatchSerializerJniWrapper
+                .create(
+                  Runtimes
+                    .contextInstance(
+                      BackendsApiManager.getBackendName,
+                      "BroadcastUtils#serializeStream"))
+                .serialize(handle)
+            } finally {
+              ColumnarBatches.release(b)
+            }
           } finally {
-            ColumnarBatches.release(b)
+            ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
           }
         })
       .toArray

@@ -139,13 +139,12 @@ object ArrowAbiUtil {
 
   def exportFromSparkColumnarBatch(
       allocator: BufferAllocator,
-      batch: ColumnarBatch,
-      batchType: ColumnarBatches.BatchType,
+      wrapper: ColumnarBatches.ColumnarBatchWrapper,
       cSchema: ArrowSchema,
       cArray: ArrowArray): Unit = {
-    ColumnarBatches.checkLoaded(batchType)
-    val schema = ArrowUtil.toSchema(batch)
-    val rb = SparkVectorUtil.toArrowRecordBatch(batch, batchType)
+    ColumnarBatches.checkLoaded(wrapper.getBatchType)
+    val schema = ArrowUtil.toSchema(wrapper.getBatch)
+    val rb = SparkVectorUtil.toArrowRecordBatch(wrapper)
     try {
       exportFromArrowRecordBatch(allocator, rb, schema, cSchema, cArray)
     } finally {

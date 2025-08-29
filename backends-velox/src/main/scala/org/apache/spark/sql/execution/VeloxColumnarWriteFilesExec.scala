@@ -97,72 +97,74 @@ class VeloxColumnarWriteFilesRDD(
     // Currently, the cb contains three columns: row, fragments, and context.
     // The first row in the row column contains the number of written numRows.
     // The fragments column contains detailed information about the file writes.
-    val loadedCb = ColumnarBatches.load(
-      ArrowBufferAllocators.contextInstance,
-      cb,
-      ColumnarBatches.identifyBatchType(cb))
+    val wrapper = ColumnarBatches.wrapColumnarBatch(cb)
     try {
-      assert(loadedCb.numCols() == 3)
-      val numWrittenRows = loadedCb.column(0).getLong(0)
+      val loadedCb = ColumnarBatches.load(ArrowBufferAllocators.contextInstance, wrapper)
+      try {
+        assert(loadedCb.numCols() == 3)
+        val numWrittenRows = loadedCb.column(0).getLong(0)
 
-      var updatedPartitions = Set.empty[String]
-      val addedAbsPathFiles: mutable.Map[String, String] = mutable.Map[String, String]()
-      var numBytes = 0L
-      val objectMapper = new ObjectMapper()
-      objectMapper.registerModule(DefaultScalaModule)
-      for (i <- 0 until loadedCb.numRows() - 1) {
-        val fragments = loadedCb.column(1).getUTF8String(i + 1)
-        val metrics = objectMapper
-          .readValue(fragments.toString.getBytes("UTF-8"), classOf[VeloxWriteFilesMetrics])
-        logDebug(s"Velox write files metrics: $metrics")
+        var updatedPartitions = Set.empty[String]
+        val addedAbsPathFiles: mutable.Map[String, String] = mutable.Map[String, String]()
+        var numBytes = 0L
+        val objectMapper = new ObjectMapper()
+        objectMapper.registerModule(DefaultScalaModule)
+        for (i <- 0 until loadedCb.numRows() - 1) {
+          val fragments = loadedCb.column(1).getUTF8String(i + 1)
+          val metrics = objectMapper
+            .readValue(fragments.toString.getBytes("UTF-8"), classOf[VeloxWriteFilesMetrics])
+          logDebug(s"Velox write files metrics: $metrics")
 
-        val fileWriteInfos = metrics.fileWriteInfos
-        assert(fileWriteInfos.length == 1)
-        val fileWriteInfo = fileWriteInfos.head
-        numBytes += fileWriteInfo.fileSize
-        val targetFileName = fileWriteInfo.targetFileName
-        val outputPath = description.path
+          val fileWriteInfos = metrics.fileWriteInfos
+          assert(fileWriteInfos.length == 1)
+          val fileWriteInfo = fileWriteInfos.head
+          numBytes += fileWriteInfo.fileSize
+          val targetFileName = fileWriteInfo.targetFileName
+          val outputPath = description.path
 
-        // part1=1/part2=1
-        val partitionFragment = metrics.name
-        // Write a partitioned table
-        if (partitionFragment != "") {
-          updatedPartitions += partitionFragment
-          val tmpOutputPath = outputPath + "/" + partitionFragment + "/" + targetFileName
-          val customOutputPath = description.customPartitionLocations.get(
-            PartitioningUtils.parsePathFragment(partitionFragment))
-          if (customOutputPath.isDefined) {
-            addedAbsPathFiles(tmpOutputPath) = customOutputPath.get + "/" + targetFileName
+          // part1=1/part2=1
+          val partitionFragment = metrics.name
+          // Write a partitioned table
+          if (partitionFragment != "") {
+            updatedPartitions += partitionFragment
+            val tmpOutputPath = outputPath + "/" + partitionFragment + "/" + targetFileName
+            val customOutputPath = description.customPartitionLocations.get(
+              PartitioningUtils.parsePathFragment(partitionFragment))
+            if (customOutputPath.isDefined) {
+              addedAbsPathFiles(tmpOutputPath) = customOutputPath.get + "/" + targetFileName
+            }
           }
         }
-      }
 
-      val numFiles = loadedCb.numRows() - 1
-      val partitionsInternalRows = updatedPartitions.map {
-        part =>
-          val parts = new Array[Any](1)
-          parts(0) = part
-          new GenericInternalRow(parts)
-      }.toSeq
-      val stats = BasicWriteTaskStats(
-        partitions = partitionsInternalRows,
-        numFiles = numFiles,
-        numBytes = numBytes,
-        numRows = numWrittenRows)
-      val summary =
-        ExecutedWriteSummary(updatedPartitions = updatedPartitions, stats = Seq(stats))
+        val numFiles = loadedCb.numRows() - 1
+        val partitionsInternalRows = updatedPartitions.map {
+          part =>
+            val parts = new Array[Any](1)
+            parts(0) = part
+            new GenericInternalRow(parts)
+        }.toSeq
+        val stats = BasicWriteTaskStats(
+          partitions = partitionsInternalRows,
+          numFiles = numFiles,
+          numBytes = numBytes,
+          numRows = numWrittenRows)
+        val summary =
+          ExecutedWriteSummary(updatedPartitions = updatedPartitions, stats = Seq(stats))
 
-      // Write an empty iterator
-      if (numFiles == 0) {
-        None
-      } else {
-        Some(
-          WriteTaskResult(
-            new TaskCommitMessage(addedAbsPathFiles.toMap -> updatedPartitions),
-            summary))
+        // Write an empty iterator
+        if (numFiles == 0) {
+          None
+        } else {
+          Some(
+            WriteTaskResult(
+              new TaskCommitMessage(addedAbsPathFiles.toMap -> updatedPartitions),
+              summary))
+        }
+      } finally {
+        loadedCb.close()
       }
     } finally {
-      loadedCb.close()
+      ColumnarBatches.ColumnarBatchWrapper.release(wrapper)
     }
   }
 
