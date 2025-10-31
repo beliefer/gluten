@@ -127,7 +127,7 @@ static inline void attachCurrentThreadAsDaemonOrThrow(JavaVM* vm, JNIEnv** out) 
   if (getEnvStat == JNI_EDETACHED) {
     DLOG(INFO) << "JNIEnv was not attached to current thread.";
     // Reattach current thread to JVM
-    getEnvStat = vm->AttachCurrentThreadAsDaemon(reinterpret_cast<void**>(out), NULL);
+    getEnvStat = vm->AttachCurrentThreadAsDaemon(reinterpret_cast<void**>(out), nullptr);
     if (getEnvStat != JNI_OK) {
       throw gluten::GlutenException("Failed to reattach current thread to JVM.");
     }
@@ -340,7 +340,7 @@ static inline void backtrace() {
 }
 
 static inline arrow::Compression::type getCompressionType(JNIEnv* env, jstring codecJstr) {
-  if (codecJstr == NULL) {
+  if (codecJstr == nullptr) {
     return arrow::Compression::UNCOMPRESSED;
   }
   auto codec = env->GetStringUTFChars(codecJstr, JNI_FALSE);
@@ -502,7 +502,7 @@ class JavaRssClient : public RssClient {
       return;
     }
     env->DeleteGlobalRef(javaRssShuffleWriter_);
-    jbyte* byteArray = env->GetByteArrayElements(array_, NULL);
+    jbyte* byteArray = env->GetByteArrayElements(array_, nullptr);
     env->ReleaseByteArrayElements(array_, byteArray, JNI_ABORT);
     env->DeleteGlobalRef(array_);
   }
@@ -514,7 +514,7 @@ class JavaRssClient : public RssClient {
     }
     jint length = env->GetArrayLength(array_);
     if (size > length) {
-      jbyte* byteArray = env->GetByteArrayElements(array_, NULL);
+      jbyte* byteArray = env->GetByteArrayElements(array_, nullptr);
       env->ReleaseByteArrayElements(array_, byteArray, JNI_ABORT);
       env->DeleteGlobalRef(array_);
       array_ = env->NewByteArray(size);

@@ -39,7 +39,7 @@ struct Less
     {
         if constexpr (positive)
             /*
-                Note: We use nan_direction_hint=-1 for ascending sort to make NULL the least value.
+                Note: We use nan_direction_hint=-1 for ascending sort to make nullptr the least value.
                 However, NaN is also considered the least value, 
                 which results in different sorting results compared to Spark since Spark treats NaN as the greatest value.
                 For now, we are temporarily ignoring this issue because cases with NaN are rare,

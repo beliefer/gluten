@@ -337,7 +337,7 @@ Check decimal precision is overflow. If overflow throws exception.
 )"});
 
     factory.registerFunction<FunctionCheckDecimalOverflowOrNull>(FunctionDocumentation{.description = R"(
-Check decimal precision is overflow. If overflow return `NULL`.
+Check decimal precision is overflow. If overflow return `nullptr`.
 )"});
 }
 }

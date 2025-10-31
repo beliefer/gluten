@@ -34,7 +34,7 @@ public:
 
     const DB::ActionsDAG::Node * parse(const substrait::Expression_ScalarFunction & substrait_func, DB::ActionsDAG & actions_dag) const override
     {
-        // the result of isNaN(NULL) is NULL in CH, but false in Spark
+        // the result of isNaN(nullptr) is nullptr in CH, but false in Spark
         DB::ActionsDAG::NodeRawConstPtrs parsed_args;
         auto ch_function_name = getCHFunctionName(substrait_func);
         const auto & args = substrait_func.arguments();

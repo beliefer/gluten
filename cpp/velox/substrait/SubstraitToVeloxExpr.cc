@@ -504,7 +504,7 @@ VectorPtr SubstraitVeloxExprConverter::literalsToVector(
 
 RowVectorPtr SubstraitVeloxExprConverter::literalsToRowVector(const ::substrait::Expression::Literal& structLiteral) {
   if (structLiteral.has_null()) {
-    VELOX_NYI("NULL for struct type is not supported.");
+    VELOX_NYI("nullptr for struct type is not supported.");
   }
   auto numFields = structLiteral.struct_().fields().size();
   if (numFields == 0) {

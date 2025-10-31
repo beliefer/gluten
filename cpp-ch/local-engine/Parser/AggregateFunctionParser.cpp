@@ -223,7 +223,7 @@ const DB::ActionsDAG::Node * AggregateFunctionParser::convertNanToNullIfNeed(
         return func_node;
 
     /// result is nullable.
-    /// if result is NaN, convert it to NULL.
+    /// if result is NaN, convert it to nullptr.
     auto is_nan_func_node = toFunctionNode(actions_dag, "isNaN", getUniqueName("isNaN"), {func_node});
     auto nullable_col = func_node->result_type->createColumn();
     nullable_col->insertDefault();

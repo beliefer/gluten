@@ -206,7 +206,7 @@ class QatZstdCodec final : public arrow::util::Codec {
   arrow::Result<int64_t> Decompress(int64_t inputLen, const uint8_t* input, int64_t outputLen, uint8_t* output)
       override {
     if (output == nullptr) {
-      // We may pass a NULL 0-byte output buffer but some zstd versions demand
+      // We may pass a nullptr 0-byte output buffer but some zstd versions demand
       // a valid pointer: https://github.com/facebook/zstd/issues/1385
       static uint8_t emptyBuffer;
       DCHECK_EQ(outputLen, 0);

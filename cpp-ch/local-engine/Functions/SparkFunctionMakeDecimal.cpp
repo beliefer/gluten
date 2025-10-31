@@ -232,7 +232,7 @@ REGISTER_FUNCTION(MakeDecimalSpark)
 Create a decimal value by use nested type. If overflow throws exception.
 )"});
     factory.registerFunction<FunctionMakeDecimalOrNull>(FunctionDocumentation{.description = R"(
-Create a decimal value by use nested type. If overflow return `NULL`.
+Create a decimal value by use nested type. If overflow return `nullptr`.
 )"});
 }
 }

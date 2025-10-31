@@ -1038,10 +1038,10 @@ String DateTimeUtil::convertTimeZone(const String & time_zone)
 UInt64 MemoryUtil::getMemoryRSS()
 {
     long rss = 0L;
-    FILE * fp = NULL;
+    FILE * fp = nullptr;
     char buf[4096];
     sprintf(buf, "/proc/%d/statm", getpid());
-    if ((fp = fopen(buf, "r")) == NULL)
+    if ((fp = fopen(buf, "r")) == nullptr)
         return 0;
     fscanf(fp, "%*s%ld", &rss);
     fclose(fp);

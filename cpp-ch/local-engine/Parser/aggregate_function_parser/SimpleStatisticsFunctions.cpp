@@ -50,7 +50,7 @@ public:
         bool with_nullability) const override
     {
         /// result is nullable.
-        /// if result is NaN, convert it to NULL.
+        /// if result is NaN, convert it to nullptr.
         auto is_nan_func_node = toFunctionNode(actions_dag, "isNaN", getUniqueName("isNaN"), {func_node});
         auto null_type = DB::makeNullable(func_node->result_type);
         auto nullable_col = null_type->createColumn();

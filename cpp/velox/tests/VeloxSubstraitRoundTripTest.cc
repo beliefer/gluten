@@ -143,8 +143,8 @@ TEST_F(VeloxSubstraitRoundTripTest, filter) {
 
 TEST_F(VeloxSubstraitRoundTripTest, null) {
   auto vectors = makeRowVector(ROW({}, {}), 1);
-  auto plan = PlanBuilder().values({vectors}).project({"NULL"}).planNode();
-  assertPlanConversion(plan, "SELECT NULL ");
+  auto plan = PlanBuilder().values({vectors}).project({"nullptr"}).planNode();
+  assertPlanConversion(plan, "SELECT nullptr ");
 }
 
 TEST_F(VeloxSubstraitRoundTripTest, values) {

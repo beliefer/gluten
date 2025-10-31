@@ -30,6 +30,11 @@ function format_linux {
 
   find ./core -regex '.*\.\(cc\|hpp\|cu\|c\|h\)' -exec clang-format-15 -style=file -i {} \;
   find ./velox -regex '.*\.\(cc\|hpp\|cu\|c\|h\)' -exec clang-format-15 -style=file -i {} \;
+
+  find ../ -type f \( -name "*.cpp" -o -name "*.c" -o -name "*.h" -o -name "*.hpp" -o -name "*.cc" \) \
+          ! -path "*/build/*" \
+          ! -path "*/.git/*" \
+          -exec sed -i 's/\<NULL\>/nullptr/g' {} +
 }
 
 function format_macos {
@@ -46,6 +51,11 @@ function format_macos {
 
   find -E ./core -regex '.*\.(cc|hpp|cu|c|h)' -exec clang-format -style=file -i {} \;
   find -E ./velox -regex '.*\.(cc|hpp|cu|c|h)' -exec clang-format -style=file -i {} \;
+
+  find ../ -type f \( -name "*.cpp" -o -name "*.c" -o -name "*.h" -o -name "*.hpp" -o -name "*.cc" \) \
+        ! -path "*/build/*" \
+        ! -path "*/.git/*" \
+        -exec sed -i '' 's/\([^a-zA-Z0-9_]\)NULL\([^a-zA-Z0-9_]\)/\1nullptr\2/g; s/^NULL\([^a-zA-Z0-9_]\)/nullptr\1/; s/\([^a-zA-Z0-9_]\)NULL$/\1nullptr/; s/^NULL$/nullptr/' {} +
 }
 
 OS=`uname -s`

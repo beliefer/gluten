@@ -160,7 +160,7 @@ public:
         jclass cls = (env)->GetObjectClass(excp); \
         jmethodID mid = env->GetMethodID(cls, "toString", "()Ljava/lang/String;"); \
         jstring jmsg = static_cast<jstring>((env)->CallObjectMethod(excp, mid)); \
-        const char * nmsg = (env)->GetStringUTFChars(jmsg, NULL); \
+        const char * nmsg = (env)->GetStringUTFChars(jmsg, nullptr); \
         std::string msg = std::string(nmsg); \
         env->ReleaseStringUTFChars(jmsg, nmsg); \
         throw DB::Exception::createRuntime(DB::ErrorCodes::LOGICAL_ERROR, msg); \
@@ -177,7 +177,7 @@ public:
         jclass cls = (env)->GetObjectClass(excp); \
         jmethodID mid = env->GetMethodID(cls, "toString", "()Ljava/lang/String;"); \
         jstring jmsg = static_cast<jstring>((env)->CallObjectMethod(excp, mid)); \
-        const char * nmsg = (env)->GetStringUTFChars(jmsg, NULL); \
+        const char * nmsg = (env)->GetStringUTFChars(jmsg, nullptr); \
         std::string msg = std::string(nmsg); \
         env->ReleaseStringUTFChars(jmsg, nmsg); \
         LOG_WARNING(&Poco::Logger::get("local_engine"), "Ignore java exception: {}", msg); \

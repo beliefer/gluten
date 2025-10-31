@@ -117,7 +117,7 @@ const DB::ActionsDAG::Node * ParseURLParser::convertNodeTypeIfNeeded(
     {
         return func_node;
     }
-    // Empty string is converted to NULL.
+    // Empty string is converted to nullptr.
     auto str_type = std::make_shared<DB::DataTypeString>();
     const auto * empty_str_node
         = &actions_dag.addColumn(DB::ColumnWithTypeAndName(str_type->createColumnConst(1, DB::Field("")), str_type, getUniqueName("")));
