@@ -36,6 +36,7 @@ import org.apache.spark.util.Utils
 
 import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat
 import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+import org.apache.hadoop.hive.ql.metadata.{Partition => HivePartition}
 import org.apache.hadoop.hive.ql.plan.TableDesc
 import org.apache.hadoop.mapred.{InputFormat, TextInputFormat}
 
@@ -84,8 +85,6 @@ case class HiveTableScanExecTransformer(
     // Single pass: use getInputFormatClass (cheap) to classify each partition.
     // formatCache deduplicates by (InputFormatClass, Option[serdeClass]) so that
     // HiveClientImpl.fromHivePartition is called at most once per distinct format combination.
-    // The serde is included in the key only for TextInputFormat, since its ReadFileFormat
-    // depends on both the InputFormat and the serde (e.g. JsonSerDe -> JsonReadFormat).
     val tableInputFormatClass = tableDesc.getInputFileFormatClass
     var hasTableFormatPartitions = false
     val formatCache =
@@ -96,15 +95,7 @@ case class HiveTableScanExecTransformer(
         if (cls == tableInputFormatClass) {
           hasTableFormatPartitions = true
         } else {
-          val serdeKey =
-            if (TEXT_INPUT_FORMAT_CLASS.isAssignableFrom(cls)) {
-              Option(partition.getTPartition.getSd.getSerdeInfo.getSerializationLib)
-            } else {
-              None
-            }
-          formatCache.getOrElseUpdate(
-            (cls, serdeKey),
-            getReadFileFormat(HiveClientImpl.fromHivePartition(partition).storage))
+          getReadFileFormatFromCache(cls, partition, formatCache)
         }
     }
     val otherFormats = formatCache.values.toSet
@@ -150,15 +141,7 @@ case class HiveTableScanExecTransformer(
           if (cls == tableInputFormatClass) {
             fileFormat
           } else {
-            val serdeKey = if (TEXT_INPUT_FORMAT_CLASS.isAssignableFrom(cls)) {
-              Option(partition.getTPartition.getSd.getSerdeInfo.getSerializationLib)
-            } else {
-              None
-            }
-            formatCache.getOrElseUpdate(
-              (cls, serdeKey),
-              getReadFileFormat(HiveClientImpl.fromHivePartition(partition).storage)
-            )
+            getReadFileFormatFromCache(cls, partition, formatCache)
           }
       }
 
@@ -172,6 +155,27 @@ case class HiveTableScanExecTransformer(
 
   @transient override lazy val fileFormat: ReadFileFormat =
     getReadFileFormat(relation.tableMeta.storage)
+
+  // Looks up or computes the ReadFileFormat for a partition whose InputFormat differs from the
+  // table-level format. The serde class is included in the cache key for TextInputFormat, since
+  // its ReadFileFormat depends on both the InputFormat and the serde (e.g. JsonSerDe ->
+  // JsonReadFormat). For all other formats the serde is irrelevant and the key is None.
+  private def getReadFileFormatFromCache(
+      cls: Class[_ <: InputFormat[_, _]],
+      partition: HivePartition,
+      formatCache: collection.mutable.Map[
+        (Class[_ <: InputFormat[_, _]], Option[String]),
+        ReadFileFormat]): ReadFileFormat = {
+    val serdeKey =
+      if (TEXT_INPUT_FORMAT_CLASS.isAssignableFrom(cls)) {
+        Option(partition.getTPartition.getSd.getSerdeInfo.getSerializationLib)
+      } else {
+        None
+      }
+    formatCache.getOrElseUpdate(
+      (cls, serdeKey),
+      getReadFileFormat(HiveClientImpl.fromHivePartition(partition).storage))
+  }
 
   private def getReadFileFormat(storage: CatalogStorageFormat): ReadFileFormat = {
     storage.inputFormat match {
