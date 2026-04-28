@@ -21,10 +21,11 @@ import org.apache.gluten.events.GlutenPlanFallbackEvent
 
 import org.apache.spark.SparkConf
 import org.apache.spark.scheduler.{SparkListener, SparkListenerEvent}
-import org.apache.spark.sql.execution.{ColumnarBroadcastExchangeExec, ColumnarShuffleExchangeExec, SortExec, SparkPlan}
+import org.apache.spark.sql.execution.{ColumnarBroadcastExchangeExec, ColumnarShuffleExchangeExec, FileSourceScanExec, SortExec, SparkPlan}
 import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanHelper, AQEShuffleReadExec}
 import org.apache.spark.sql.execution.exchange.ShuffleExchangeExec
-import org.apache.spark.sql.execution.joins.{BroadcastHashJoinExec, BroadcastNestedLoopJoinExec, SortMergeJoinExec}
+import org.apache.spark.sql.execution.joins.{BroadcastHashJoinExec, BroadcastNestedLoopJoinExec, ShuffledHashJoinExec, SortMergeJoinExec}
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.utils.GlutenSuiteUtils
 
 import scala.collection.mutable.ArrayBuffer
@@ -66,12 +67,32 @@ class FallbackSuite extends VeloxWholeStageTransformerSuite with AdaptiveSparkPl
       .write
       .format("parquet")
       .saveAsTable("tmp3")
+    spark
+      .range(100)
+      .selectExpr(
+        "cast(id as decimal) as c1",
+        "cast(id % 3 as int) as c2",
+        "cast(id % 9 as timestamp) as c3")
+      .write
+      .format("orc")
+      .saveAsTable("tmp4")
+    spark
+      .range(100)
+      .selectExpr(
+        "cast(id as decimal) as c1",
+        "cast(id % 3 as int) as c2",
+        "cast(id % 5 as timestamp) as c3")
+      .write
+      .format("orc")
+      .saveAsTable("tmp5")
   }
 
   override protected def afterAll(): Unit = {
     spark.sql("drop table tmp1")
     spark.sql("drop table tmp2")
     spark.sql("drop table tmp3")
+    spark.sql("drop table tmp4")
+    spark.sql("drop table tmp5")
 
     super.afterAll()
   }
@@ -418,6 +439,135 @@ class FallbackSuite extends VeloxWholeStageTransformerSuite with AdaptiveSparkPl
       )
     } finally {
       spark.sparkContext.removeSparkListener(listener)
+    }
+  }
+
+  test("For decimal-key joins, if one side falls back to Spark, force fallback the other side") {
+    // Two sides of smj fallback to spark scan -> symmetric -> native SMJ
+    val sql1 = "SELECT /*+ MERGE(tmp4) */ tmp4.c2 AS 4c2, tmp4.c3 AS 4c3, tmp5.c2 AS 5c2, " +
+      "tmp5.c3 AS 5c3 FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    withSQLConf(
+      GlutenConfig.COLUMNAR_FORCE_SHUFFLED_HASH_JOIN_ENABLED.key -> "false",
+      GlutenConfig.COLUMNAR_SHUFFLED_HASH_JOIN_ENABLED.key -> "false"
+    ) {
+      runQueryAndCompare(sql1) {
+        df =>
+          val plan = df.queryExecution.executedPlan
+          assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+          assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+          assert(collect(plan) { case smj: SortMergeJoinExec => smj }.size == 0)
+          assert(collect(plan) { case smj: SortMergeJoinExecTransformer => smj }.size == 1)
+      }
+    }
+
+    // The left side of smj fallbacks to spark scan and the right side of smj is native scan
+    val sql2 = "SELECT /*+ MERGE(tmp4) */ tmp4.c2 AS 4c2, tmp4.c3 AS 4c3, tmp5.c2 AS 5c2 " +
+      "FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    withSQLConf(
+      GlutenConfig.COLUMNAR_FORCE_SHUFFLED_HASH_JOIN_ENABLED.key -> "false",
+      GlutenConfig.COLUMNAR_SHUFFLED_HASH_JOIN_ENABLED.key -> "false") {
+      runQueryAndCompare(sql2) {
+        df =>
+          val plan = df.queryExecution.executedPlan
+          assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+          assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+          assert(collect(plan) { case smj: SortMergeJoinExec => smj }.size == 0)
+          assert(collect(plan) { case smj: SortMergeJoinExecTransformer => smj }.size == 1)
+      }
+    }
+
+    // The right side of smj fallbacks to spark scan and the left side of smj is native scan
+    val sql3 = "SELECT /*+ MERGE(tmp4) */ tmp4.c2 AS 4c2, tmp5.c2 AS 5c2, tmp5.c3 AS 5c3 " +
+      "FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    withSQLConf(
+      GlutenConfig.COLUMNAR_FORCE_SHUFFLED_HASH_JOIN_ENABLED.key -> "false",
+      GlutenConfig.COLUMNAR_SHUFFLED_HASH_JOIN_ENABLED.key -> "false") {
+      runQueryAndCompare(sql3) {
+        df =>
+          val plan = df.queryExecution.executedPlan
+          assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+          assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+          assert(collect(plan) { case smj: SortMergeJoinExec => smj }.size == 0)
+          assert(collect(plan) { case smj: SortMergeJoinExecTransformer => smj }.size == 1)
+      }
+    }
+
+    // Two sides of shj fallback to spark scan
+    val sql4 = "SELECT /*+ SHUFFLE_HASH(tmp4) */ tmp4.c2 AS 4c2, tmp4.c3 AS 4c3, tmp5.c2 AS 5c2, " +
+      "tmp5.c3 AS 5c3 FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1") {
+      runQueryAndCompare(sql4) {
+        df =>
+          val plan = df.queryExecution.executedPlan
+          assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+          assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+          assert(collect(plan) { case shj: ShuffledHashJoinExec => shj }.size == 0)
+          assert(collect(plan) { case shj: ShuffledHashJoinExecTransformer => shj }.size == 1)
+      }
+    }
+
+    // The left side of shj fallbacks to spark scan and the right side of shj is native scan
+    val sql5 = "SELECT /*+ SHUFFLE_HASH(tmp4) */ tmp4.c2 AS 4c2, tmp4.c3 AS 4c3, tmp5.c2 AS 5c2 " +
+      "FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1") {
+      runQueryAndCompare(sql5) {
+        df =>
+          val plan = df.queryExecution.executedPlan
+          assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+          assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+          assert(collect(plan) { case shj: ShuffledHashJoinExec => shj }.size == 0)
+          assert(collect(plan) { case shj: ShuffledHashJoinExecTransformer => shj }.size == 1)
+      }
+    }
+
+    // The right side of shj fallbacks to spark scan and the left side of shj is native scan
+    val sql6 = "SELECT /*+ SHUFFLE_HASH(tmp4) */ tmp4.c2 AS 4c2, tmp5.c2 AS 5c2, tmp5.c3 AS 5c3 " +
+      "FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "-1") {
+      runQueryAndCompare(sql6) {
+        df =>
+          val plan = df.queryExecution.executedPlan
+          assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+          assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+          assert(collect(plan) { case shj: ShuffledHashJoinExec => shj }.size == 0)
+          assert(collect(plan) { case shj: ShuffledHashJoinExecTransformer => shj }.size == 1)
+      }
+    }
+
+    // Two sides of bhj fallback to spark scan
+    val sql7 = "SELECT tmp4.c2 AS 4c2, tmp4.c3 AS 4c3, tmp5.c2 AS 5c2, " +
+      "tmp5.c3 AS 5c3 FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    runQueryAndCompare(sql7) {
+      df =>
+        val plan = df.queryExecution.executedPlan
+        assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+        assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+        assert(collect(plan) { case bhj: BroadcastHashJoinExec => bhj }.size == 0)
+        assert(collect(plan) { case bhj: BroadcastHashJoinExecTransformer => bhj }.size == 1)
+    }
+
+    // The left side of bhj fallbacks to spark scan and the right side of bhj is native scan
+    val sql8 = "SELECT tmp4.c2 AS 4c2, tmp4.c3 AS 4c3, tmp5.c2 AS 5c2 " +
+      "FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    runQueryAndCompare(sql8) {
+      df =>
+        val plan = df.queryExecution.executedPlan
+        assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+        assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+        assert(collect(plan) { case bhj: BroadcastHashJoinExec => bhj }.size == 0)
+        assert(collect(plan) { case bhj: BroadcastHashJoinExecTransformer => bhj }.size == 1)
+    }
+
+    // The right side of bhj fallbacks to spark scan and the left side of bhj is native scan
+    val sql9 = "SELECT tmp4.c2 AS 4c2, tmp5.c2 AS 5c2, tmp5.c3 AS 5c3 " +
+      "FROM tmp4 join tmp5 on tmp4.c1 = tmp5.c1"
+    runQueryAndCompare(sql9) {
+      df =>
+        val plan = df.queryExecution.executedPlan
+        assert(collect(plan) { case scan: FileSourceScanExec => scan }.size == 2)
+        assert(collect(plan) { case scan: FileSourceScanExecTransformer => scan }.size == 0)
+        assert(collect(plan) { case bhj: BroadcastHashJoinExec => bhj }.size == 0)
+        assert(collect(plan) { case bhj: BroadcastHashJoinExecTransformer => bhj }.size == 1)
     }
   }
 }
