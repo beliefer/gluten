@@ -18,7 +18,7 @@ package org.apache.spark.sql.hive.execution
 
 import org.apache.gluten.execution.TransformSupport
 
-import org.apache.spark.SparkConf
+import org.apache.spark.{DebugFilesystem, SparkConf}
 import org.apache.spark.internal.config
 import org.apache.spark.internal.config.UI.UI_ENABLED
 import org.apache.spark.sql.{DataFrame, GlutenSQLTestsTrait, SparkSession}
@@ -59,6 +59,16 @@ abstract class GlutenHiveSQLQuerySuiteBase extends GlutenSQLTestsTrait {
       SparkSession.clearDefaultSession()
       doThreadPostAudit()
     }
+  }
+
+  override def afterEach(): Unit = {
+    // Clear any file handles left open by Hive ORC's SplitGenerator background threads.
+    // OrcInputFormat$SplitGenerator.populateAndCacheStripeDetails() opens ORC readers
+    // via OrcFile.createReader() in background FutureTasks that are never explicitly closed
+    // (Hive bug HIVE-17183), leaking handles into DebugFilesystem.openStreams and causing
+    // SharedSparkSessionBase.afterEach() to abort the suite via assertNoOpenStreams().
+    DebugFilesystem.clearOpenStreams()
+    super.afterEach()
   }
 
   protected def defaultSparkConf: SparkConf = {
