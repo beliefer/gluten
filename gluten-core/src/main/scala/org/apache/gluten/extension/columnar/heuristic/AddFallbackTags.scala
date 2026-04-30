@@ -33,12 +33,7 @@ case class AddFallbackTags(validator: Validator) extends Rule[SparkPlan] {
       case _ =>
     }
 
-    plan.foreach {
-      case adaptive: AdaptiveSparkPlanExec =>
-        validateJoin(adaptive.initialPlan)
-      case other =>
-        validateJoin(other)
-    }
+    plan.foreach(validateJoin)
 
     plan
   }
