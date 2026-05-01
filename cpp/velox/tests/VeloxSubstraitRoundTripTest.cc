@@ -437,7 +437,8 @@ TEST_F(VeloxSubstraitRoundTripTest, arrayLiteral) {
       "array[], array[array[1,2,3], array[4,5]]");
 }
 
-TEST_F(VeloxSubstraitRoundTripTest, dateType) {
+// Disabled due to https://github.com/facebookincubator/velox/pull/17318.
+TEST_F(VeloxSubstraitRoundTripTest, DISABLED_dateType) {
   auto a = makeFlatVector<int32_t>({0, 1});
   auto b = makeFlatVector<double_t>({0.3, 0.4});
   auto c = makeFlatVector<int32_t>({8036, 8035}, DATE());
