@@ -75,7 +75,8 @@ class VeloxSubstraitRoundTripTest : public OperatorTestBase {
         std::make_shared<SubstraitToVeloxPlanConverter>(
             pool_.get(),
             veloxCfg.get(),
-            std::vector<std::shared_ptr<ResultIterator>>(),
+            std::vector<std::shared_ptr<ResultIterator>>{},
+            VeloxConnectorIds{},
             std::nullopt,
             std::nullopt,
             true);
@@ -102,7 +103,8 @@ class VeloxSubstraitRoundTripTest : public OperatorTestBase {
           std::make_shared<SubstraitToVeloxPlanConverter>(
               pool_.get(),
               veloxCfg.get(),
-              std::vector<std::shared_ptr<ResultIterator>>(),
+              std::vector<std::shared_ptr<ResultIterator>>{},
+              VeloxConnectorIds{},
               std::nullopt,
               std::nullopt,
               true);

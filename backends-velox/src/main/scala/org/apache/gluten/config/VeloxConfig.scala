@@ -217,14 +217,12 @@ object VeloxConfig extends ConfigRegistry {
       .bytesConf(ByteUnit.BYTE)
       .createWithDefaultString("32MB")
 
-  val COLUMNAR_VELOX_ASYNC_TIMEOUT =
+  val COLUMNAR_VELOX_ASYNC_TIMEOUT_ON_TASK_STOPPING =
     buildStaticConf("spark.gluten.sql.columnar.backend.velox.asyncTimeoutOnTaskStopping")
-      .doc(
-        "Timeout for asynchronous execution when task is being stopped in Velox backend. " +
-          "It's recommended to set to a number larger than network connection timeout that the " +
-          "possible async tasks are relying on.")
+      .doc("Timeout in milliseconds when waiting for runtime-scoped async work to finish during" +
+        " teardown.")
       .timeConf(TimeUnit.MILLISECONDS)
-      .createWithDefault(30000)
+      .createWithDefault(30000L)
 
   val COLUMNAR_VELOX_SPLIT_PRELOAD_PER_DRIVER =
     buildConf("spark.gluten.sql.columnar.backend.velox.SplitPreloadPerDriver")
