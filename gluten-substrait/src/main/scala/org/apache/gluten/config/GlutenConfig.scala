@@ -480,9 +480,6 @@ object GlutenConfig extends ConfigRegistry {
     SQLConf.RUNTIME_BLOOM_FILTER_MAX_NUM_ITEMS.key,
     "spark.io.compression.codec",
     "spark.sql.decimalOperations.allowPrecisionLoss",
-    "spark.gluten.sql.columnar.backend.velox.bloomFilter.expectedNumItems",
-    "spark.gluten.sql.columnar.backend.velox.bloomFilter.numBits",
-    "spark.gluten.sql.columnar.backend.velox.bloomFilter.maxNumBits",
     // s3 config
     SPARK_S3_ACCESS_KEY,
     SPARK_S3_SECRET_KEY,
