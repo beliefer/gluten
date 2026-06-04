@@ -344,6 +344,38 @@ class FallbackSuite extends VeloxWholeStageTransformerSuite with AdaptiveSparkPl
     }
   }
 
+  test("orcUseColumnNames should respect orc.force.positional.evolution") {
+    // When `orc.force.positional.evolution=true`, ORC must be read by position even though
+    // orcUseColumnNames defaults to true. The effective orcUseColumnNames therefore becomes
+    // false, which (as in the test above) requires passing the data schema to Velox and
+    // falls back when the schema contains an unsupported type (timestamp_ntz here).
+    val query = "SELECT c2 FROM test"
+    Seq("true", "false").foreach {
+      forcePositional =>
+        withSQLConf(
+          VeloxConfig.ORC_USE_COLUMN_NAMES.key -> "true",
+          VeloxConfig.ORC_FORCE_POSITIONAL_EVOLUTION -> forcePositional
+        ) {
+          withTable("test") {
+            spark
+              .range(100)
+              .selectExpr("to_timestamp_ntz(from_unixtime(id % 3)) as c1", "id as c2")
+              .write
+              .format("orc")
+              .saveAsTable("test")
+
+            runQueryAndCompare(query) {
+              df =>
+                val plan = df.queryExecution.executedPlan
+                // positional evolution => effective orcUseColumnNames=false => fallback
+                val fallback = forcePositional == "true"
+                assert(collect(plan) { case g: GlutenPlan => g }.isEmpty == fallback)
+            }
+          }
+        }
+    }
+  }
+
   test("fallback on spilt with unsupported regex") {
     runQueryAndCompare("SELECT split(cast(c1 as string), '(?<=\\\\}),(?=\\\\{)') from tmp1") {
       df =>

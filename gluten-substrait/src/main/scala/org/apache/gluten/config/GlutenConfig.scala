@@ -576,6 +576,16 @@ object GlutenConfig extends ConfigRegistry {
       }
       .foreach { case (k, v) => nativeConfMap.put(k, v) }
 
+    // When `orc.force.positional.evolution=true`, vanilla Spark maps ORC columns by
+    // position rather than by name (see OrcUtils.requestedColumnIds). The Velox ORC reader
+    // must do the same, otherwise name-based matching against a mismatched file schema
+    // reads columns back as null/empty. Override the (Velox) orcUseColumnNames session conf
+    // so native reads ORC by position too. Harmless for backends that ignore this key.
+    // String literal is used because gluten-substrait cannot depend on backends-velox.
+    if (conf.getOrElse("spark.hadoop.orc.force.positional.evolution", "false").toBoolean) {
+      nativeConfMap.put("spark.gluten.sql.columnar.backend.velox.orcUseColumnNames", "false")
+    }
+
     // Pass the latest tokens to native
     nativeConfMap.put(
       ReservedKeys.GLUTEN_UGI_TOKENS,
