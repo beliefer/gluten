@@ -354,7 +354,7 @@ class FallbackSuite extends VeloxWholeStageTransformerSuite with AdaptiveSparkPl
       forcePositional =>
         withSQLConf(
           VeloxConfig.ORC_USE_COLUMN_NAMES.key -> "true",
-          VeloxConfig.ORC_FORCE_POSITIONAL_EVOLUTION -> forcePositional
+          GlutenConfig.SPARK_ORC_FORCE_POSITIONAL_EVOLUTION -> forcePositional
         ) {
           withTable("test") {
             spark

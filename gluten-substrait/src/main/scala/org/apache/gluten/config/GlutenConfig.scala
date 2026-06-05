@@ -433,6 +433,8 @@ object GlutenConfig extends ConfigRegistry {
   val SPARK_S3_ENDPOINT_REGION: String = HADOOP_PREFIX + S3_ENDPOINT_REGION
   val S3_AWS_IMDS_ENABLED = "fs.s3a.aws.imds.enabled"
   val SPARK_S3_AWS_IMDS_ENABLED: String = HADOOP_PREFIX + S3_AWS_IMDS_ENABLED
+  val ORC_FORCE_POSITIONAL_EVOLUTION = "orc.force.positional.evolution"
+  val SPARK_ORC_FORCE_POSITIONAL_EVOLUTION = HADOOP_PREFIX + ORC_FORCE_POSITIONAL_EVOLUTION
 
   // ABFS config
   val ABFS_PREFIX = "fs.azure."
@@ -582,7 +584,7 @@ object GlutenConfig extends ConfigRegistry {
     // reads columns back as null/empty. Override the (Velox) orcUseColumnNames session conf
     // so native reads ORC by position too. Harmless for backends that ignore this key.
     // String literal is used because gluten-substrait cannot depend on backends-velox.
-    if (conf.getOrElse("spark.hadoop.orc.force.positional.evolution", "false").toBoolean) {
+    if (conf.getOrElse(SPARK_ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean) {
       nativeConfMap.put("spark.gluten.sql.columnar.backend.velox.orcUseColumnNames", "false")
     }
 

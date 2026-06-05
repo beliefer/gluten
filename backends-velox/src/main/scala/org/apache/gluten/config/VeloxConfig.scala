@@ -95,7 +95,7 @@ class VeloxConfig(conf: SQLConf) extends GlutenConfig(conf) {
   def cudfShuffleMaxPrefetchBytes: Long = getConf(CUDF_SHUFFLE_MAX_PREFETCH_BYTES)
 
   def orcUseColumnNames: Boolean = getConf(ORC_USE_COLUMN_NAMES) &&
-    !conf.getConfString(ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean
+    !conf.getConfString(GlutenConfig.SPARK_ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean
 
   def parquetUseColumnNames: Boolean = getConf(PARQUET_USE_COLUMN_NAMES)
 
@@ -808,12 +808,6 @@ object VeloxConfig extends ConfigRegistry {
       .doc("Maps table field names to file field names using names, not indices for ORC files.")
       .booleanConf
       .createWithDefault(true)
-
-  // The Hadoop/ORC config that forces position-based schema evolution. When set to true,
-  // vanilla Spark reads ORC columns by position; Gluten/Velox must do the same, so it
-  // overrides ORC_USE_COLUMN_NAMES to false. Kept as a plain conf key (not a Gluten
-  // ConfigEntry) because it is a standard `spark.hadoop.*` Hadoop property.
-  val ORC_FORCE_POSITIONAL_EVOLUTION = "spark.hadoop.orc.force.positional.evolution"
 
   val PARQUET_USE_COLUMN_NAMES =
     buildConf("spark.gluten.sql.columnar.backend.velox.parquetUseColumnNames")
