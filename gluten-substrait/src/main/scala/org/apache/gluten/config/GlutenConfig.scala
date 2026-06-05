@@ -586,7 +586,8 @@ object GlutenConfig extends ConfigRegistry {
     // String literal is used because gluten-substrait cannot depend on backends-velox.
     if (
       backendName == "velox" &&
-      conf.getOrElse(SPARK_ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean) {
+      conf.getOrElse(SPARK_ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean
+    ) {
       nativeConfMap.put("spark.gluten.sql.columnar.backend.velox.orcUseColumnNames", "false")
     }
 
