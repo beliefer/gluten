@@ -584,7 +584,9 @@ object GlutenConfig extends ConfigRegistry {
     // reads columns back as null/empty. Override the (Velox) orcUseColumnNames session conf
     // so native reads ORC by position too. Harmless for backends that ignore this key.
     // String literal is used because gluten-substrait cannot depend on backends-velox.
-    if (conf.getOrElse(SPARK_ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean) {
+    if (
+      backendName == "velox" &&
+      conf.getOrElse(SPARK_ORC_FORCE_POSITIONAL_EVOLUTION, "false").toBoolean) {
       nativeConfMap.put("spark.gluten.sql.columnar.backend.velox.orcUseColumnNames", "false")
     }
 
