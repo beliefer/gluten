@@ -779,6 +779,12 @@ object VeloxConfig extends ConfigRegistry {
       .booleanConf
       .createWithDefault(true)
 
+  val CUDF_ALLOW_CPU_FALLBACK =
+    buildStaticConf("spark.gluten.sql.columnar.backend.velox.cudf.allowCpuFallback")
+      .doc("Allow cuDF to fall back to CPU execution for unsupported operators.")
+      .booleanConf
+      .createWithDefault(true)
+
   val CUDF_CONCURRENT_GPU_TASKS =
     buildStaticConf("spark.gluten.sql.columnar.backend.velox.cudf.concurrentGpuTasks")
       .doc("The number of concurrent GPU tasks to run.")
