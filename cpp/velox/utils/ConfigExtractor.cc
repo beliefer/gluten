@@ -268,15 +268,13 @@ std::shared_ptr<facebook::velox::config::ConfigBase> createHiveConnectorSessionC
   configs[facebook::velox::connector::hive::HiveConfig::kAllowInt32NarrowingSession] =
       conf->get<bool>(kAllowInt32Narrowing, true) ? "true" : "false";
   // ORC/DWRF files are mapped to the requested schema by name by default,
-  // matching vanilla Spark. Individual files are still mapped by position by
-  // the native reader when their physical schema is all Hive placeholder names
-  // (_col0, ...) or when orc.force.positional.evolution is set below.
-  configs[facebook::velox::connector::hive::HiveConfig::kOrcUseColumnNamesSession] = "true";
-  // Forward Spark's orc.force.positional.evolution so the native reader maps
-  // ORC/DWRF files by position even in name-based mapping (see
-  // OrcUtils.requestedColumnIds).
-  configs[facebook::velox::connector::hive::HiveConfig::kOrcForcePositionalEvolutionSession] =
-      conf->get<bool>(kOrcForcePositionalEvolution, false) ? "true" : "false";
+  // matching vanilla Spark. Individual files whose physical schema is all Hive
+  // placeholder names (_col0, ...) are still mapped by position per-file by the
+  // native reader. When Spark's orc.force.positional.evolution is set, force
+  // position-based mapping for the whole scan by disabling name-based mapping
+  // (ColumnMappingMode::kPosition), matching OrcUtils.requestedColumnIds.
+  configs[facebook::velox::connector::hive::HiveConfig::kOrcUseColumnNamesSession] =
+      conf->get<bool>(kOrcForcePositionalEvolution, false) ? "false" : "true";
   configs[parquetSessionProperty(facebook::velox::parquet::ParquetConfig::kWriterPageSizeSession)] =
       conf->get<std::string>(kWriteParquetPageSizeBytes, "1MB");
   configs[parquetSessionProperty(facebook::velox::parquet::ParquetConfig::kWriterDictionaryPageSizeLimitSession)] =
