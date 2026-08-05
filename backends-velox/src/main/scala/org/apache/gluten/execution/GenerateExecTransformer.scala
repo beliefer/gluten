@@ -350,6 +350,29 @@ object PullOutGenerateProjectHelper extends PullOutProjectHelper {
               Alias(caseWhen, generatePostAliasName)(attr.exprId, attr.qualifier)
           }
           ProjectExec(generate.requiredChildOutput ++ newOutput, newGenerate)
+        case _: Stack if generate.outer =>
+          // Like the outer Explode above, Velox's Unnest appends a trailing boolean marker
+          // column for an OUTER generator (true when the row is a real unnested value, false
+          // for the synthetic padding row of an empty/null input). Stack emits no ordinality
+          // column, so its native output layout (value columns + trailing marker) matches
+          // Explode's. Without consuming the marker here, the native output is one column wider
+          // than the declared schema, every upstream column shifts by one, and a downstream
+          // hash shuffle receives the boolean marker at field 0 instead of the int32 partition
+          // key (VeloxShuffleWriter getFirstColumn aborts). Append a boolean isPresent to absorb
+          // the marker and wrap each output column so the padding row projects NULLs.
+          val isPresent =
+            AttributeReference(generatePostAliasName, BooleanType, nullable = true)()
+          val newGenerate =
+            generate.copy(generatorOutput = generate.generatorOutput :+ isPresent)
+          val newOutput = generate.generatorOutput.map {
+            attr =>
+              val caseWhen = CaseWhen(
+                Seq((isPresent, attr)),
+                Literal(null, attr.dataType)
+              )
+              Alias(caseWhen, generatePostAliasName)(attr.exprId, attr.qualifier)
+          }
+          ProjectExec(generate.requiredChildOutput ++ newOutput, newGenerate)
         case _ => generate
       }
     } else {
