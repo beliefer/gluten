@@ -1092,10 +1092,7 @@ class MiscOperatorSuite extends VeloxWholeStageTransformerSuite with AdaptiveSpa
     }
   }
 
-  test("test LATERAL VIEW OUTER stack followed by hash shuffle") {
-    // Repro for: `Partition id (field 0) should be integer, but got BOOLEAN`
-    // (VeloxShuffleWriter.h getFirstColumn).
-    //
+  test("LATERAL VIEW OUTER stack followed by hash shuffle") {
     // With OUTER, Velox's Unnest appends a trailing BOOLEAN marker column. The Stack path has
     // no pullOutPostProject branch to consume that marker (unlike explode/posexplode/inline),
     // so the native output is one column wider than the declared schema and every upstream
